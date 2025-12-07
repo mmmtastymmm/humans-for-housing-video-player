@@ -5,10 +5,13 @@ from typing import Callable, Union
 from pynput import keyboard
 
 
-def create_key_press_handler(event_queue: queue.Queue) -> Callable[[Union[keyboard.Key, keyboard.KeyCode]], None]:
+def create_key_press_handler(
+    event_queue: queue.Queue,
+) -> Callable[[Union[keyboard.Key, keyboard.KeyCode]], None]:
     """
     Factory function that creates a key press handler with the queue bound via closure.
     """
+
     def on_key_press(key: Union[keyboard.Key, keyboard.KeyCode]) -> None:
         """
         Callback for keyboard events. Detects space key and enqueues timestamp.
@@ -62,17 +65,19 @@ def video_control_thread(event_queue: queue.Queue) -> None:
 
 
 def main():
-    """
-
-    """
+    """ """
     print("Hello from humans-for-housing-video-player!")
 
     # Create the queue for space key events
     event_queue = queue.Queue()
 
     # Create and start all threads, passing the queue to each
-    input_thread = threading.Thread(target=input_reader_thread, args=(event_queue,), daemon=True)
-    video_thread = threading.Thread(target=video_control_thread, args=(event_queue,), daemon=True)
+    input_thread = threading.Thread(
+        target=input_reader_thread, args=(event_queue,), daemon=True
+    )
+    video_thread = threading.Thread(
+        target=video_control_thread, args=(event_queue,), daemon=True
+    )
 
     input_thread.start()
     video_thread.start()
