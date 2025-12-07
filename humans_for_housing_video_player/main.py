@@ -1,18 +1,19 @@
-import threading
 import queue
+import threading
+from collections.abc import Callable
 from datetime import datetime
-from typing import Callable, Union
+
 from pynput import keyboard
 
 
 def create_key_press_handler(
     event_queue: queue.Queue,
-) -> Callable[[Union[keyboard.Key, keyboard.KeyCode]], None]:
+) -> Callable[[keyboard.Key | keyboard.KeyCode], None]:
     """
     Factory function that creates a key press handler with the queue bound via closure.
     """
 
-    def on_key_press(key: Union[keyboard.Key, keyboard.KeyCode]) -> None:
+    def on_key_press(key: keyboard.Key | keyboard.KeyCode) -> None:
         """
         Callback for keyboard events. Detects space key and enqueues timestamp.
         This is called by pynput's keyboard listener on a separate thread.
@@ -31,7 +32,8 @@ def create_key_press_handler(
 
 def input_reader_thread(event_queue: queue.Queue) -> None:
     """
-    Thread 1: Uses pynput to capture global keyboard events (works even when VLC has focus).
+    Thread 1: Uses pynput to capture global keyboard events
+        (works even when VLC has focus).
     Listens for space key presses and enqueues them with timestamps.
     """
     print("[Input Reader] Starting global keyboard listener")
