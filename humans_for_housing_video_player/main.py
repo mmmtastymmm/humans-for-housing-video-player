@@ -1,9 +1,50 @@
 import queue
 import select
+import sys
 import threading
+import time
+from collections.abc import Callable
 from datetime import datetime
 
+import vlc
 from evdev import InputDevice, categorize, ecodes, list_devices
+
+LOOPING_VIDEO = "movies/HFHEXHIBIT_VIDEO_01_LOOP.mov"
+TRIGGER_VIDEO = "movies/HFHEXHIBIT_VIDEO_02_TRIGGER.mp4"
+
+
+def get_framebuffer_size(fb_path: str = "/dev/fb0") -> tuple[int, int] | None:
+    """Get the framebuffer resolution."""
+    try:
+        import fcntl
+        import struct
+
+        FBIOGET_VSCREENINFO = 0x4600
+        with open(fb_path, "rb") as fb:
+            # Get variable screen info
+            vinfo = fcntl.ioctl(fb, FBIOGET_VSCREENINFO, b"\x00" * 160)
+            xres, yres = struct.unpack("II", vinfo[:8])
+            return (xres, yres)
+    except (OSError, IOError):
+        return None
+
+
+def blank_framebuffer(fb_path: str = "/dev/fb0") -> None:
+    """Fill the framebuffer with black pixels."""
+    try:
+        size = get_framebuffer_size(fb_path)
+        if size is None:
+            return
+
+        xres, yres = size
+        # Assuming 32-bit color depth (4 bytes per pixel)
+        # Write black (all zeros) to framebuffer
+        black_screen = b"\x00" * (xres * yres * 4)
+
+        with open(fb_path, "wb") as fb:
+            fb.write(black_screen)
+    except (OSError, IOError, PermissionError) as e:
+        print(f"Could not blank framebuffer: {e}", file=sys.stderr)
 
 
 def find_keyboard_devices() -> list[InputDevice]:
@@ -112,24 +153,78 @@ def video_control_thread(event_queue: queue.Queue) -> None:
     TODO: Implement actual video logic with VLC
     """
     print("[Video Control] Thread started", flush=True)
+    vlc_args = [
+        "--fullscreen",
+        "--video-wallpaper",
+        "--no-video-title-show",
+        "--no-osd",
+        "--mouse-hide-timeout=0",
+        "--no-keyboard-events",
+        "--no-mouse-events",
+    ]
+    vlc_instance = vlc.Instance(vlc_args)
+    vlc_player = vlc_instance.media_player_new()
+
+    # Pre-load both media files
+    looping_media = vlc_instance.media_new(LOOPING_VIDEO)
+    trigger_media = vlc_instance.media_new(TRIGGER_VIDEO)
+
+    # Set fullscreen
+    vlc_player.set_fullscreen(True)
+
+    # Start with the looping video
+    vlc_player.set_media(looping_media)
+    vlc_player.play()
+    time.sleep(0.1)
+
+    playing_trigger = False
 
     while True:
         try:
             # Wait for and consume space events from the queue
             timestamp = event_queue.get(timeout=1)
             print(f"[Video Control] Received space event from {timestamp}", flush=True)
+            vlc_player.set_media(trigger_media)
+            vlc_player.play()
+            time.sleep(0.1)
+            playing_trigger = True
 
         except queue.Empty:
-            # No events in queue, continue waiting
-            continue
+            # No events in queue, do nothing
+            pass
         except Exception as e:
             print(f"[Video Control] Error: {e}", flush=True)
             break
 
+        # Check player state
+        state = vlc_player.get_state()
+
+        if state == vlc.State.Ended:
+            if playing_trigger:
+                # Trigger video finished, go back to looping
+                vlc_player.set_media(looping_media)
+                vlc_player.play()
+                time.sleep(0.1)
+                playing_trigger = False
+            else:
+                # Looping video ended, restart it
+                vlc_player.set_media(looping_media)
+                vlc_player.play()
+                time.sleep(0.1)
+        elif state == vlc.State.Error:
+            print("Error playing video", file=sys.stderr)
+            break
+
+        time.sleep(0.05)
+
+    vlc_player.stop()
+    vlc_player.release()
+
 
 def main():
-    """ """
     print("Hello from humans-for-housing-video-player!", flush=True)
+    # Write a blank screen so that screen is blank when switching videos
+    blank_framebuffer()
 
     # Create the queue for space key events
     event_queue = queue.Queue()
