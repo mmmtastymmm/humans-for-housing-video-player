@@ -1,6 +1,36 @@
 # Installation Instructions for Raspberry Pi
 
-## Prerequisites
+## Quick Automated Installation
+
+The easiest way to install is using the automated installation script:
+
+```bash
+# Download and run the install script
+curl -sSL https://raw.githubusercontent.com/mmmtastymmm/humans-for-housing-video-player/main/install.sh | bash
+```
+
+Or if you already have the repository:
+
+```bash
+chmod +x install.sh
+./install.sh
+```
+
+The script will:
+- Install system dependencies (git, VLC, python3-pip)
+- Clone the repository to `/home/pi/humans-for-housing-video-player`
+- Install Python dependencies (pynput)
+- Set up the systemd service
+- Add user to input group for keyboard access
+- Enable auto-start on boot
+
+---
+
+## Manual Installation
+
+If you prefer to install manually:
+
+### Prerequisites
 
 1. Install pynput:
 ```bash
@@ -13,7 +43,7 @@ sudo apt-get update
 sudo apt-get install vlc
 ```
 
-## Systemd Service Installation
+### Systemd Service Installation
 
 ### 1. Update the service file paths
 
