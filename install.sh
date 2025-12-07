@@ -9,9 +9,9 @@ NC='\033[0m' # No Color
 
 # Configuration
 REPO_URL="https://github.com/mmmtastymmm/humans-for-housing-video-player.git"
-INSTALL_DIR="/home/pi/humans-for-housing-video-player"
+USER=$(whoami)
+INSTALL_DIR="/home/$USER/humans-for-housing-video-player"
 SERVICE_NAME="humans-for-housing-video-player.service"
-USER="pi"
 
 echo -e "${GREEN}=====================================${NC}"
 echo -e "${GREEN}Humans for Housing Video Player Setup${NC}"
@@ -85,8 +85,11 @@ sudo usermod -a -G input "$USER"
 
 echo ""
 echo -e "${GREEN}Step 6: Installing systemd service...${NC}"
-# Update service file with actual install directory and uv venv python
+# Update service file with actual user, install directory, and uv venv python
+sed -i "s|User=.*|User=$USER|g" "$SERVICE_NAME"
+sed -i "s|Group=.*|Group=$USER|g" "$SERVICE_NAME"
 sed -i "s|WorkingDirectory=.*|WorkingDirectory=$INSTALL_DIR|g" "$SERVICE_NAME"
+sed -i "s|Environment=\"XAUTHORITY=.*|Environment=\"XAUTHORITY=/home/$USER/.Xauthority\"|g" "$SERVICE_NAME"
 sed -i "s|ExecStart=.*|ExecStart=$INSTALL_DIR/.venv/bin/python $INSTALL_DIR/humans_for_housing_video_player/main.py|g" "$SERVICE_NAME"
 
 # Copy service file to systemd directory
