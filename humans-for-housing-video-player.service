@@ -12,7 +12,7 @@ Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/pi/.Xauthority"
 ExecStart=/usr/bin/python3 /home/pi/humans-for-housing-video-player/humans_for_housing_video_player/main.py
 Restart=on-failure
-RestartSec=1
+RestartSec=100ms
 StandardOutput=journal
 StandardError=journal
 
