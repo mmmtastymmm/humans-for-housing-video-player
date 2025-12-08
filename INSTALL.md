@@ -1,12 +1,10 @@
 # Installation Instructions for Raspberry Pi
 
-## Quick Automated Installation
-
 The easiest way to install is using the automated installation script:
 
 ```bash
 # Download and run the install script
-curl -sSL https://raw.githubusercontent.com/mmmtastymmm/humans-for-housing-video-player/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/mmmtastymmm/humans-for-housing-video-player/main/install.sh -o /tmp/install.sh && bash /tmp/install.sh
 ```
 
 Or if you already have the repository:
@@ -25,56 +23,6 @@ The script will:
 - Enable auto-start on boot
 
 ---
-
-## Manual Installation
-
-If you prefer to install manually:
-
-### Prerequisites
-
-1. Install pynput:
-```bash
-pip3 install pynput
-```
-
-2. Ensure VLC is installed:
-```bash
-sudo apt-get update
-sudo apt-get install vlc
-```
-
-### Systemd Service Installation
-
-### 1. Update the service file paths
-
-Edit `humans-for-housing-video-player.service` and update these paths if needed:
-- `WorkingDirectory` - Path to your project directory
-- `ExecStart` - Path to your main.py file
-- `User` and `Group` - Your username (default is `pi`)
-
-### 2. Copy the service file to systemd
-
-```bash
-sudo cp humans-for-housing-video-player.service /etc/systemd/system/
-```
-
-### 3. Reload systemd to recognize the new service
-
-```bash
-sudo systemctl daemon-reload
-```
-
-### 4. Enable the service to start on boot
-
-```bash
-sudo systemctl enable humans-for-housing-video-player.service
-```
-
-### 5. Start the service now (optional - to test)
-
-```bash
-sudo systemctl start humans-for-housing-video-player.service
-```
 
 ## Managing the Service
 
