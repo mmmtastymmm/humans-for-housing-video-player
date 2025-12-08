@@ -10,6 +10,9 @@ from pathlib import Path
 import vlc
 from evdev import InputDevice, categorize, ecodes, list_devices
 
+MAX_DISPLAY_RETRIES = 30
+DISPLAY_RETRY_DELAY = 2
+
 
 def find_video_files() -> tuple[Path | None, Path | None]:
     """
@@ -224,8 +227,26 @@ def main():
         print("ERROR: No TRIGGER video found in ~/movies", flush=True)
         sys.exit(1)
 
-    # Create fullscreen black tkinter window
-    root = tk.Tk()
+    # Wait for display to be available
+    root = None
+    for attempt in range(MAX_DISPLAY_RETRIES):
+        try:
+            root = tk.Tk()
+            print(f"[Main] Connected to display on attempt {attempt + 1}", flush=True)
+            break
+        except tk.TclError as e:
+            attempt_str = f"{attempt + 1}/{MAX_DISPLAY_RETRIES}"
+            print(
+                f"[Main] Display not ready (attempt {attempt_str}): {e}",
+                flush=True,
+            )
+            time.sleep(DISPLAY_RETRY_DELAY)
+
+    if root is None:
+        print("ERROR: Could not connect to display after max retries", flush=True)
+        sys.exit(1)
+
+    # Configure fullscreen black tkinter window
     root.title("Video Player")
     root.configure(background="black")
     root.config(cursor="none")
