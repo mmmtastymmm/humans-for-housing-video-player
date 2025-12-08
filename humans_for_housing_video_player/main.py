@@ -1,48 +1,59 @@
 import queue
 import threading
-from collections.abc import Callable
 from datetime import datetime
 
-from pynput import keyboard
+from evdev import InputDevice, categorize, ecodes, list_devices
 
 
-def create_key_press_handler(
-    event_queue: queue.Queue,
-) -> Callable[[keyboard.Key | keyboard.KeyCode], None]:
+def find_keyboard_device() -> InputDevice | None:
     """
-    Factory function that creates a key press handler with the queue bound via closure.
+    Find the first keyboard device in /dev/input/.
+    Returns None if no keyboard is found.
     """
-
-    def on_key_press(key: keyboard.Key | keyboard.KeyCode) -> None:
-        """
-        Callback for keyboard events. Detects space key and enqueues timestamp.
-        This is called by pynput's keyboard listener on a separate thread.
-        """
-        try:
-            # Check if the key is the space bar
-            if key == keyboard.Key.space:
-                timestamp = datetime.now()
-                event_queue.put(timestamp)
-                print(f"[Input Reader] Space detected at {timestamp}")
-        except Exception as e:
-            print(f"[Input Reader] Error in key handler: {e}")
-
-    return on_key_press
+    devices = [InputDevice(path) for path in list_devices()]
+    for device in devices:
+        # Check if device has KEY_SPACE capability (indicates it's a keyboard)
+        if ecodes.KEY_SPACE in device.capabilities().get(ecodes.EV_KEY, []):
+            print(f"[Input Reader] Found keyboard: {device.name} at {device.path}")
+            return device
+    return None
 
 
 def input_reader_thread(event_queue: queue.Queue) -> None:
     """
-    Thread 1: Uses pynput to capture global keyboard events
-        (works even when VLC has focus).
+    Thread 1: Uses evdev to capture keyboard events from /dev/input/.
     Listens for space key presses and enqueues them with timestamps.
     """
-    print("[Input Reader] Starting global keyboard listener")
+    print("[Input Reader] Starting keyboard listener")
 
-    # Create a keyboard listener that will run until stopped
-    on_press_handler = create_key_press_handler(event_queue)
-    with keyboard.Listener(on_press=on_press_handler) as listener:
-        print("[Input Reader] Keyboard listener active")
-        listener.join()
+    # Find a keyboard device
+    device = find_keyboard_device()
+    if device is None:
+        print("[Input Reader] ERROR: No keyboard device found!")
+        return
+
+    print(f"[Input Reader] Listening for space key on {device.name}")
+
+    try:
+        # Grab exclusive access to prevent events from reaching other handlers
+        # Comment this out if you want other apps to also receive the events
+        device.grab()
+
+        # Read events from the device
+        for event in device.read_loop():
+            # We only care about key press events (not release)
+            if event.type == ecodes.EV_KEY:
+                key_event = categorize(event)
+                # Check if it's a key press (not release) and it's the space key
+                if key_event.keycode == "KEY_SPACE" and key_event.keystate == 1:
+                    timestamp = datetime.now()
+                    event_queue.put(timestamp)
+                    print(f"[Input Reader] Space detected at {timestamp}")
+    except Exception as e:
+        print(f"[Input Reader] Error: {e}")
+    finally:
+        device.ungrab()
+        device.close()
 
 
 def video_control_thread(event_queue: queue.Queue) -> None:
