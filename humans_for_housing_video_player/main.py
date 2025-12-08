@@ -3,7 +3,7 @@ import select
 import sys
 import threading
 import time
-from collections.abc import Callable
+import tkinter as tk
 from datetime import datetime
 
 import vlc
@@ -13,38 +13,44 @@ LOOPING_VIDEO = "movies/HFHEXHIBIT_VIDEO_01_LOOP.mov"
 TRIGGER_VIDEO = "movies/HFHEXHIBIT_VIDEO_02_TRIGGER.mp4"
 
 
-def get_framebuffer_size(fb_path: str = "/dev/fb0") -> tuple[int, int] | None:
-    """Get the framebuffer resolution."""
-    try:
-        import fcntl
-        import struct
+def process_device_events(device: InputDevice, event_queue: queue.Queue) -> None:
+    """Process keyboard events from a single device."""
+    for event in device.read():
+        if event.type != ecodes.EV_KEY:
+            continue
 
-        FBIOGET_VSCREENINFO = 0x4600
-        with open(fb_path, "rb") as fb:
-            # Get variable screen info
-            vinfo = fcntl.ioctl(fb, FBIOGET_VSCREENINFO, b"\x00" * 160)
-            xres, yres = struct.unpack("II", vinfo[:8])
-            return (xres, yres)
-    except (OSError, IOError):
-        return None
+        key_event = categorize(event)
+        # keycode can be a list when multiple keycodes are mapped
+        keycodes = (
+            key_event.keycode
+            if isinstance(key_event.keycode, list)
+            else [key_event.keycode]
+        )
+
+        # Check if it's a key press (not release) and it's the space key
+        if "KEY_SPACE" in keycodes and key_event.keystate == 1:
+            timestamp = datetime.now()
+            event_queue.put(timestamp)
+            print(
+                f"[Input Reader] Space detected at {timestamp} from {device.name}",
+                flush=True,
+            )
 
 
-def blank_framebuffer(fb_path: str = "/dev/fb0") -> None:
-    """Fill the framebuffer with black pixels."""
-    try:
-        size = get_framebuffer_size(fb_path)
-        if size is None:
-            return
-
-        xres, yres = size
-        # Assuming 32-bit color depth (4 bytes per pixel)
-        # Write black (all zeros) to framebuffer
-        black_screen = b"\x00" * (xres * yres * 4)
-
-        with open(fb_path, "wb") as fb:
-            fb.write(black_screen)
-    except (OSError, IOError, PermissionError) as e:
-        print(f"Could not blank framebuffer: {e}", file=sys.stderr)
+def create_black_background() -> tk.Tk:
+    """Create a fullscreen black window to hide the desktop during video transitions."""
+    root = tk.Tk()
+    root.attributes("-fullscreen", True)
+    root.configure(background="black")
+    root.config(cursor="none")  # Hide cursor
+    # Keep window below other windows (VLC will be on top)
+    root.attributes("-topmost", False)
+    root.lower()
+    # Remove window decorations
+    root.overrideredirect(True)
+    # Update to ensure window is drawn
+    root.update()
+    return root
 
 
 def find_keyboard_devices() -> list[InputDevice]:
@@ -86,9 +92,6 @@ def input_reader_thread(event_queue: queue.Queue) -> None:
         flush=True,
     )
 
-    # Create a mapping from file descriptor to device for quick lookup
-    fd_to_device = {dev.fd: dev for dev in devices}
-
     try:
         # Grab exclusive access to all devices
         for device in devices:
@@ -107,28 +110,11 @@ def input_reader_thread(event_queue: queue.Queue) -> None:
         # Monitor all devices using select
         while True:
             # Wait for any device to have data available
-            r, w, x = select.select(devices, [], [])
+            r, _, _ = select.select(devices, [], [])
 
             for device in r:
                 try:
-                    for event in device.read():
-                        # We only care about key press events
-                        if event.type == ecodes.EV_KEY:
-                            key_event = categorize(event)
-                            # keycode can be a list when multiple keycodes are mapped
-                            keycodes = (
-                                key_event.keycode
-                                if isinstance(key_event.keycode, list)
-                                else [key_event.keycode]
-                            )
-                            # Check if it's a key press (not release) and it's the space key
-                            if "KEY_SPACE" in keycodes and key_event.keystate == 1:
-                                timestamp = datetime.now()
-                                event_queue.put(timestamp)
-                                print(
-                                    f"[Input Reader] Space detected at {timestamp} from {device.name}",
-                                    flush=True,
-                                )
+                    process_device_events(device, event_queue)
                 except Exception as e:
                     print(
                         f"[Input Reader] Error reading from {device.name}: {e}",
@@ -161,6 +147,7 @@ def video_control_thread(event_queue: queue.Queue) -> None:
         "--mouse-hide-timeout=0",
         "--no-keyboard-events",
         "--no-mouse-events",
+        "--avcodec-hw=none",
     ]
     vlc_instance = vlc.Instance(vlc_args)
     vlc_player = vlc_instance.media_player_new()
@@ -184,10 +171,12 @@ def video_control_thread(event_queue: queue.Queue) -> None:
             # Wait for and consume space events from the queue
             timestamp = event_queue.get(timeout=1)
             print(f"[Video Control] Received space event from {timestamp}", flush=True)
-            vlc_player.set_media(trigger_media)
-            vlc_player.play()
-            time.sleep(0.1)
-            playing_trigger = True
+            if not playing_trigger:
+                vlc_player.stop()
+                vlc_player.set_media(trigger_media)
+                vlc_player.play()
+                time.sleep(0.1)
+                playing_trigger = True
 
         except queue.Empty:
             # No events in queue, do nothing
@@ -223,8 +212,9 @@ def video_control_thread(event_queue: queue.Queue) -> None:
 
 def main():
     print("Hello from humans-for-housing-video-player!", flush=True)
-    # Write a blank screen so that screen is blank when switching videos
-    blank_framebuffer()
+
+    # Create a fullscreen black window to hide desktop during video transitions
+    black_bg = create_black_background()
 
     # Create the queue for space key events
     event_queue = queue.Queue()
@@ -245,11 +235,14 @@ def main():
     )
 
     try:
-        # Keep main thread alive
-        input_thread.join()
-        video_thread.join()
+        # Keep main thread alive while also processing tkinter events
+        while input_thread.is_alive() or video_thread.is_alive():
+            black_bg.update()
+            time.sleep(0.01)
     except KeyboardInterrupt:
         print("\nShutting down...", flush=True)
+    finally:
+        black_bg.destroy()
 
 
 if __name__ == "__main__":
