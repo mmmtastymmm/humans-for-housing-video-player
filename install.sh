@@ -61,7 +61,7 @@ if [ -d "$INSTALL_DIR" ]; then
         git pull
     fi
 else
-    git clone "$REPO_URL" "$INSTALL_DIR"
+    git clone -b 4-startup-on-boot "$REPO_URL" "$INSTALL_DIR"
 fi
 
 cd "$INSTALL_DIR"
