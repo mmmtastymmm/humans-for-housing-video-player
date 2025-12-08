@@ -1,7 +1,7 @@
 [Unit]
 Description=Humans for Housing Video Player
-After=graphical.target network.target
-Wants=graphical.target
+After=display-manager.service
+Wants=display-manager.service
 
 [Service]
 Type=simple
@@ -10,11 +10,12 @@ Group=pi
 WorkingDirectory=/home/pi/humans-for-housing-video-player
 Environment="DISPLAY=:0"
 Environment="XAUTHORITY=/home/pi/.Xauthority"
+Environment="XDG_RUNTIME_DIR=/run/user/1000"
 ExecStart=/usr/bin/python3 /home/pi/humans-for-housing-video-player/humans_for_housing_video_player/main.py
 Restart=on-failure
-RestartSec=100ms
+RestartSec=5
 StandardOutput=journal
 StandardError=journal
 
 [Install]
-WantedBy=graphical.target
+WantedBy=default.target
