@@ -37,22 +37,6 @@ def process_device_events(device: InputDevice, event_queue: queue.Queue) -> None
             )
 
 
-def create_black_background() -> tk.Tk:
-    """Create a fullscreen black window to hide the desktop during video transitions."""
-    root = tk.Tk()
-    root.attributes("-fullscreen", True)
-    root.configure(background="black")
-    root.config(cursor="none")  # Hide cursor
-    # Keep window below other windows (VLC will be on top)
-    root.attributes("-topmost", False)
-    root.lower()
-    # Remove window decorations
-    root.overrideredirect(True)
-    # Update to ensure window is drawn
-    root.update()
-    return root
-
-
 def find_keyboard_devices() -> list[InputDevice]:
     """
     Find all keyboard devices in /dev/input/ that have KEY_SPACE capability.
@@ -133,31 +117,19 @@ def input_reader_thread(event_queue: queue.Queue) -> None:
                 pass
 
 
-def video_control_thread(event_queue: queue.Queue) -> None:
+def video_control_thread(
+    event_queue: queue.Queue,
+    vlc_player: vlc.MediaPlayer,
+    vlc_instance: vlc.Instance,
+) -> None:
     """
-    Thread 2: Consumes space key events from the queue and prints them.
-    TODO: Implement actual video logic with VLC
+    Thread 2: Consumes space key events from the queue and controls video playback.
     """
     print("[Video Control] Thread started", flush=True)
-    vlc_args = [
-        "--fullscreen",
-        "--video-wallpaper",
-        "--no-video-title-show",
-        "--no-osd",
-        "--mouse-hide-timeout=0",
-        "--no-keyboard-events",
-        "--no-mouse-events",
-        "--avcodec-hw=none",
-    ]
-    vlc_instance = vlc.Instance(vlc_args)
-    vlc_player = vlc_instance.media_player_new()
 
     # Pre-load both media files
     looping_media = vlc_instance.media_new(LOOPING_VIDEO)
     trigger_media = vlc_instance.media_new(TRIGGER_VIDEO)
-
-    # Set fullscreen
-    vlc_player.set_fullscreen(True)
 
     # Start with the looping video
     vlc_player.set_media(looping_media)
@@ -169,7 +141,7 @@ def video_control_thread(event_queue: queue.Queue) -> None:
     while True:
         try:
             # Wait for and consume space events from the queue
-            timestamp = event_queue.get(timeout=1)
+            timestamp = event_queue.get(timeout=0.1)
             print(f"[Video Control] Received space event from {timestamp}", flush=True)
             if not playing_trigger:
                 vlc_player.stop()
@@ -207,24 +179,61 @@ def video_control_thread(event_queue: queue.Queue) -> None:
         time.sleep(0.05)
 
     vlc_player.stop()
-    vlc_player.release()
 
 
 def main():
     print("Hello from humans-for-housing-video-player!", flush=True)
 
-    # Create a fullscreen black window to hide desktop during video transitions
-    black_bg = create_black_background()
+    # Create fullscreen black tkinter window
+    root = tk.Tk()
+    root.title("Video Player")
+    root.configure(background="black")
+    root.config(cursor="none")
+
+    # Get screen dimensions and set fullscreen
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    root.geometry(f"{screen_width}x{screen_height}+0+0")
+    root.overrideredirect(True)
+    root.attributes("-fullscreen", True)
+
+    # Create a frame to hold the video
+    video_frame = tk.Frame(root, bg="black")
+    video_frame.pack(fill=tk.BOTH, expand=True)
+
+    # Update to get the window ID
+    root.update()
+
+    # Create VLC instance and player
+    vlc_args = [
+        "--no-video-title-show",
+        "--no-osd",
+        "--mouse-hide-timeout=0",
+        "--no-keyboard-events",
+        "--no-mouse-events",
+        "--avcodec-hw=none",
+    ]
+    vlc_instance = vlc.Instance(vlc_args)
+    vlc_player = vlc_instance.media_player_new()
+
+    # Embed VLC into the tkinter frame
+    video_frame.update()
+    window_id = video_frame.winfo_id()
+    vlc_player.set_xwindow(window_id)
+
+    print(f"[Main] Embedded VLC into window ID: {window_id}", flush=True)
 
     # Create the queue for space key events
     event_queue = queue.Queue()
 
-    # Create and start all threads, passing the queue to each
+    # Create and start threads
     input_thread = threading.Thread(
         target=input_reader_thread, args=(event_queue,), daemon=True
     )
     video_thread = threading.Thread(
-        target=video_control_thread, args=(event_queue,), daemon=True
+        target=video_control_thread,
+        args=(event_queue, vlc_player, vlc_instance),
+        daemon=True,
     )
 
     input_thread.start()
@@ -235,14 +244,14 @@ def main():
     )
 
     try:
-        # Keep main thread alive while also processing tkinter events
-        while input_thread.is_alive() or video_thread.is_alive():
-            black_bg.update()
-            time.sleep(0.01)
+        # Run tkinter main loop
+        root.mainloop()
     except KeyboardInterrupt:
         print("\nShutting down...", flush=True)
     finally:
-        black_bg.destroy()
+        vlc_player.stop()
+        vlc_player.release()
+        root.destroy()
 
 
 if __name__ == "__main__":
