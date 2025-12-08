@@ -5,12 +5,41 @@ import threading
 import time
 import tkinter as tk
 from datetime import datetime
+from pathlib import Path
 
 import vlc
 from evdev import InputDevice, categorize, ecodes, list_devices
 
-LOOPING_VIDEO = "movies/HFHEXHIBIT_VIDEO_01_LOOP.mov"
-TRIGGER_VIDEO = "movies/HFHEXHIBIT_VIDEO_02_TRIGGER.mp4"
+
+def find_video_files() -> tuple[Path | None, Path | None]:
+    """
+    Search for LOOP and TRIGGER video files in ~/movies.
+
+    Returns a tuple of (looping_video_path, trigger_video_path).
+    Either may be None if not found.
+    """
+    looping_video = None
+    trigger_video = None
+
+    MOVIES_DIR = Path.home() / "movies"
+
+    if not MOVIES_DIR.exists():
+        print(f"[Video] Warning: Movies directory not found: {MOVIES_DIR}", flush=True)
+        return None, None
+
+    for file in MOVIES_DIR.iterdir():
+        if not file.is_file():
+            continue
+
+        name_upper = file.name.upper()
+        if "LOOP" in name_upper:
+            looping_video = file
+            print(f"[Video] Found looping video: {file}", flush=True)
+        elif "TRIGGER" in name_upper:
+            trigger_video = file
+            print(f"[Video] Found trigger video: {file}", flush=True)
+
+    return looping_video, trigger_video
 
 
 def process_device_events(device: InputDevice, event_queue: queue.Queue) -> None:
@@ -121,6 +150,8 @@ def video_control_thread(
     event_queue: queue.Queue,
     vlc_player: vlc.MediaPlayer,
     vlc_instance: vlc.Instance,
+    looping_video: Path,
+    trigger_video: Path,
 ) -> None:
     """
     Thread 2: Consumes space key events from the queue and controls video playback.
@@ -128,8 +159,8 @@ def video_control_thread(
     print("[Video Control] Thread started", flush=True)
 
     # Pre-load both media files
-    looping_media = vlc_instance.media_new(LOOPING_VIDEO)
-    trigger_media = vlc_instance.media_new(TRIGGER_VIDEO)
+    looping_media = vlc_instance.media_new(str(looping_video))
+    trigger_media = vlc_instance.media_new(str(trigger_video))
 
     # Start with the looping video
     vlc_player.set_media(looping_media)
@@ -183,6 +214,15 @@ def video_control_thread(
 
 def main():
     print("Hello from humans-for-housing-video-player!", flush=True)
+    # Find video files in ~/movies
+    looping_video, trigger_video = find_video_files()
+
+    if looping_video is None:
+        print("ERROR: No LOOP video found in ~/movies", flush=True)
+        sys.exit(1)
+    if trigger_video is None:
+        print("ERROR: No TRIGGER video found in ~/movies", flush=True)
+        sys.exit(1)
 
     # Create fullscreen black tkinter window
     root = tk.Tk()
@@ -232,7 +272,7 @@ def main():
     )
     video_thread = threading.Thread(
         target=video_control_thread,
-        args=(event_queue, vlc_player, vlc_instance),
+        args=(event_queue, vlc_player, vlc_instance, looping_video, trigger_video),
         daemon=True,
     )
 
