@@ -1,8 +1,16 @@
 # Installation Instructions for Raspberry Pi
 
+## Prerequisites
+
+1. Set up a raspberry pi with the default 64bit install found here: https://www.raspberrypi.com/software/
+2. Set up the wifi
+3. Ensure you can make an ssh connection to the device.
+
 The software can be installed even if not all videos are ready yet.
 
 The easiest way to install is using the automated installation script:
+
+From the raspberry pi via ssh run the following command:
 
 ```bash
 # Download and run the install script
