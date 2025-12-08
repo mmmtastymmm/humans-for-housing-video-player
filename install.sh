@@ -44,19 +44,10 @@ fi
 echo ""
 echo -e "${GREEN}Step 1: Installing system dependencies...${NC}"
 sudo apt-get update
-sudo apt-get install -y git vlc python3-venv
+sudo apt-get install -y git vlc python3-vlc python3-evdev
 
 echo ""
-echo -e "${GREEN}Step 2: Installing uv (Python package manager)...${NC}"
-if ! command -v uv &> /dev/null; then
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    export PATH="$HOME/.cargo/bin:$PATH"
-else
-    echo "uv is already installed"
-fi
-
-echo ""
-echo -e "${GREEN}Step 3: Cloning repository...${NC}"
+echo -e "${GREEN}Step 2: Cloning repository...${NC}"
 if [ -d "$INSTALL_DIR" ]; then
     echo -e "${YELLOW}Directory $INSTALL_DIR already exists.${NC}"
     echo -e "${YELLOW}Do you want to remove it and clone fresh? (y/N)${NC}"
@@ -76,21 +67,16 @@ fi
 cd "$INSTALL_DIR"
 
 echo ""
-echo -e "${GREEN}Step 4: Installing Python dependencies with uv...${NC}"
-uv sync
-
-echo ""
-echo -e "${GREEN}Step 5: Adding user to input group (for keyboard access)...${NC}"
+echo -e "${GREEN}Step 3: Adding user to input group (for keyboard access)...${NC}"
 sudo usermod -a -G input "$USER"
 
 echo ""
-echo -e "${GREEN}Step 6: Installing systemd service...${NC}"
+echo -e "${GREEN}Step 4: Installing systemd service...${NC}"
 # Update service file with actual user, install directory, and uv venv python
 sed -i "s|User=.*|User=$USER|g" "$SERVICE_NAME"
 sed -i "s|Group=.*|Group=$USER|g" "$SERVICE_NAME"
 sed -i "s|WorkingDirectory=.*|WorkingDirectory=$INSTALL_DIR|g" "$SERVICE_NAME"
 sed -i "s|Environment=\"XAUTHORITY=.*|Environment=\"XAUTHORITY=/home/$USER/.Xauthority\"|g" "$SERVICE_NAME"
-sed -i "s|ExecStart=.*|ExecStart=$INSTALL_DIR/.venv/bin/python $INSTALL_DIR/humans_for_housing_video_player/main.py|g" "$SERVICE_NAME"
 
 # Copy service file to systemd directory
 sudo cp "$SERVICE_NAME" /etc/systemd/system/
